@@ -201,6 +201,12 @@ void hal_init(void)
 	hal_consolePrint("hal: video_init done\n");
 	hal_printCurrentEl();
 	video_markHalReady();
+	/* SMP Phase A handoff: release cores 1-3 from the armstub spin-table
+	 * into secondary_smoke_entry. That routine (in _init.S) now prints
+	 * its "cN: a" marker then RE-ARMS the spin-table — clears spin_cpuN
+	 * back to 0 and WFE-polls it — so the kernel can later release the
+	 * cores into its own entry point by writing spin_cpuN again. We
+	 * trigger that second release in hal_cpuJump below. */
 	hal_smpBringupSecondaries();
 	hal_consolePrint("hal: init complete\n");
 
@@ -447,6 +453,32 @@ int hal_cpuJump(void)
 	 * exist at teardown are stale firmware-era residue. Use
 	 * dc ivac (invalidate-only) — clean would write those stale
 	 * lines back over the correct DDR data plo just placed. */
+	/* SMP Phase A second-stage release: cores 1-3 are busy-polling
+	 * their spin_cpuN slot from secondary_handoff (plo/_init.S).
+	 * Writing the kernel entry PA into those slots wakes them on
+	 * their next poll iteration; they then branch into kernel `_start`.
+	 *
+	 * dc cvac after each store pushes plo's cached write down to the
+	 * Point of Coherency so the secondaries' caches-off `ldr` reads
+	 * actually see it. Without this, the write sits in plo's L1
+	 * (Normal Inner-WB) and never lands in DDR before mmu_disable
+	 * tears the mapping down. SEV is kept as a hint in case any
+	 * core happens to be in WFE for another reason. */
+	asm volatile (
+		"mov x10, #0xe0\n"
+		"str %0, [x10]\n"
+		"dc cvac, x10\n"
+		"mov x10, #0xe8\n"
+		"str %0, [x10]\n"
+		"dc cvac, x10\n"
+		"mov x10, #0xf0\n"
+		"str %0, [x10]\n"
+		"dc cvac, x10\n"
+		"dsb sy\n"
+		"sev\n"
+		:: "r"(hal_common.entry) : "x10", "memory");
+	hal_consolePrint("hal: smp release-2 → kernel entry\n");
+
 	hal_dcacheEnable(0);
 	hal_dcacheInval((addr_t)ADDR_DDR, (addr_t)ADDR_DDR + (addr_t)SIZE_DDR);
 	hal_icacheEnable(0);
