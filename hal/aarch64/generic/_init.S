@@ -378,27 +378,20 @@ secondary_smoke_entry:
 	ldr x3, =PLO_UART0_BASE_ADDRESS
 	str w4, [x3]
 
-	/* SMP Phase A handoff (2026-05-21): after printing the smoke
-	 * marker, busy-poll spin_cpuN. Plo's hal_init smoke wrote
-	 * secondary_smoke_entry PA there; plo's later hal_cpuJump
-	 * overwrites it with the kernel entry PA. We do NOT clear the
-	 * slot ourselves — clearing races plo's later write and the
-	 * clear can persist as 0 in DDR forever, leaving the kernel
-	 * with no way to release us.
-	 *
-	 * Strategy: snapshot the current value (the smoke entry PA the
-	 * armstub branched us through), then poll until the value
-	 * differs. The new value is plo's kernel-entry write. */
+#if defined(PLO_SMP_ENABLE) && (PLO_SMP_ENABLE != 0)
+	/* SMP Phase A handoff: after the smoke marker, busy-poll
+	 * spin_cpuN until plo's hal_cpuJump release-2 overwrites it with
+	 * the kernel entry PA. Then set x9 = syspage PA and branch to
+	 * the new value. Compiled out by default (see PLO_SMP_ENABLE gate
+	 * in hal.c) until Phase B closes the secondary re-entry loop. */
 secondary_handoff:
 	mrs x6, mpidr_el1
 	and x6, x6, #0x3              /* core ID (0..3) */
 	mov x5, #0xd8                  /* armstub spin_cpu0 base PA */
 	add x5, x5, x6, lsl #3         /* address of our spin_cpuN */
-	/* Snapshot initial value (secondary_smoke_entry PA from plo's
-	 * smoke). Save in x8 so we can detect when it changes. */
 	dc ivac, x5
 	dsb sy
-	ldr x8, [x5]
+	ldr x8, [x5]                  /* snapshot initial value */
 1:
 	dc ivac, x5
 	dsb sy
@@ -406,23 +399,21 @@ secondary_handoff:
 	cmp x4, x8
 	b.eq 1b                        /* same as snapshot, keep polling */
 
-	/* Critical for handoff: kernel _start expects x9 = syspage PA
-	 * from plo. Primary's path through hal_exitToEL1 loads x9 from
-	 * hal_common.hs (offset 0). Mirror that here for secondaries. */
+	/* Kernel _start expects x9 = syspage PA from plo (primary takes
+	 * this via hal_exitToEL1's `ldp x9, x0, [x0]` from hal_common). */
 	adrp x10, hal_common
 	add x10, x10, #:lo12:hal_common
-	ldr x9, [x10]                  /* hal_common.hs → syspage PA */
-	/* Clear caller-save regs (mirror armstub's secondary_spin) and
-	 * branch — kernel _start expects x0 = 0 from cold reset. */
+	ldr x9, [x10]
 	mov x0, #0
 	mov x1, #0
 	mov x2, #0
 	mov x3, #0
 	br x4
+#endif
 
 secondary_park:
-	/* No longer reached in the Phase A handoff design. Kept as
-	 * a final safety net in case something jumps here directly. */
+	/* Default destination after secondary_smoke_entry: WFE forever
+	 * in plo memory. Pre-Phase-A behaviour. */
 	dsb sy
 	wfe
 	b secondary_park

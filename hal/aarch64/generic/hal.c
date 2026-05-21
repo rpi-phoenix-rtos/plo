@@ -201,26 +201,17 @@ void hal_init(void)
 	hal_consolePrint("hal: video_init done\n");
 	hal_printCurrentEl();
 	video_markHalReady();
-#if defined(PLO_SMP_ENABLE) && (PLO_SMP_ENABLE != 0)
-	/* SMP Phase A handoff: release cores 1-3 from the armstub spin-table
-	 * into secondary_smoke_entry. That routine (in _init.S) prints its
-	 * "cN: a" marker then RE-ARMS the spin-table — clears spin_cpuN
-	 * back to 0 and busy-polls it — so the kernel can later release
-	 * the cores into its own entry point by writing spin_cpuN again
-	 * (triggered in hal_cpuJump below).
-	 *
-	 * Off by default because the secondary cores currently loop back
-	 * through plo's secondary_handoff and the kernel's _other_core_trap
-	 * ~100 times each during a single boot (root cause TBD — see
-	 * docs/status.md "Open work" section). The looping doesn't break
-	 * primary's boot path, but it does saturate enough memory bandwidth
-	 * that pcie/xhci enumeration is materially delayed and the
-	 * `(psh)%` prompt only just barely lands within the 360 s capture
-	 * window. Re-enable once Phase B closes the loop. */
+	/* Always release secondaries from armstub into the plo-local
+	 * secondary_smoke_entry → secondary_park sequence. This matches
+	 * the pre-Phase-A behaviour (cores wake, print their "cN: a"
+	 * smoke marker, then WFE-park in plo memory) and is the regime
+	 * primary's boot path was tuned against. Cores parked in armstub's
+	 * spin-table WFE empirically delay primary's pcie/xhci progress
+	 * — possibly because the armstub spin loop re-issues `ldr` from
+	 * PA 0xe0/0xe8/0xf0 on every WFE-wake (spurious or otherwise),
+	 * contending for the memory bus with primary's pcie config-space
+	 * reads. */
 	hal_smpBringupSecondaries();
-#else
-	(void)hal_smpBringupSecondaries; /* keep symbol referenced */
-#endif
 	hal_consolePrint("hal: init complete\n");
 
 	hal_common.entry = (addr_t)-1;
