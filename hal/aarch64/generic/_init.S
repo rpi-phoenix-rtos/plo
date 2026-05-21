@@ -390,16 +390,6 @@ secondary_smoke_entry:
 	 * armstub branched us through), then poll until the value
 	 * differs. The new value is plo's kernel-entry write. */
 secondary_handoff:
-	/* Diagnostic 'H' — confirm we entered the handoff path. */
-	mov w4, #'H'
-9991:
-	ldr x3, =(PLO_UART0_BASE_ADDRESS + UARTFR_OFFSET)
-	ldr w5, [x3]
-	tst w5, #UARTFR_TXFF
-	b.ne 9991b
-	ldr x3, =PLO_UART0_BASE_ADDRESS
-	str w4, [x3]
-
 	mrs x6, mpidr_el1
 	and x6, x6, #0x3              /* core ID (0..3) */
 	mov x5, #0xd8                  /* armstub spin_cpu0 base PA */
@@ -415,19 +405,6 @@ secondary_handoff:
 	ldr x4, [x5]
 	cmp x4, x8
 	b.eq 1b                        /* same as snapshot, keep polling */
-2:
-	/* Preserve x4 (the entry PA) into x7 — the diagnostic print
-	 * clobbers x4 with the 'B' character. */
-	mov x7, x4
-	/* Diagnostic 'B' — exited the poll loop, about to branch. */
-	mov w4, #'B'
-9992:
-	ldr x3, =(PLO_UART0_BASE_ADDRESS + UARTFR_OFFSET)
-	ldr w5, [x3]
-	tst w5, #UARTFR_TXFF
-	b.ne 9992b
-	ldr x3, =PLO_UART0_BASE_ADDRESS
-	str w4, [x3]
 
 	/* Critical for handoff: kernel _start expects x9 = syspage PA
 	 * from plo. Primary's path through hal_exitToEL1 loads x9 from
@@ -435,9 +412,7 @@ secondary_handoff:
 	adrp x10, hal_common
 	add x10, x10, #:lo12:hal_common
 	ldr x9, [x10]                  /* hal_common.hs → syspage PA */
-	mov x4, x7                     /* restore entry PA */
-	/* x4 holds the new entry PA written by the kernel-side release.
-	 * Clear caller-save regs (mirror armstub's secondary_spin) and
+	/* Clear caller-save regs (mirror armstub's secondary_spin) and
 	 * branch — kernel _start expects x0 = 0 from cold reset. */
 	mov x0, #0
 	mov x1, #0

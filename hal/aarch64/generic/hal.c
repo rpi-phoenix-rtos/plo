@@ -201,13 +201,26 @@ void hal_init(void)
 	hal_consolePrint("hal: video_init done\n");
 	hal_printCurrentEl();
 	video_markHalReady();
+#if defined(PLO_SMP_ENABLE) && (PLO_SMP_ENABLE != 0)
 	/* SMP Phase A handoff: release cores 1-3 from the armstub spin-table
-	 * into secondary_smoke_entry. That routine (in _init.S) now prints
-	 * its "cN: a" marker then RE-ARMS the spin-table — clears spin_cpuN
-	 * back to 0 and WFE-polls it — so the kernel can later release the
-	 * cores into its own entry point by writing spin_cpuN again. We
-	 * trigger that second release in hal_cpuJump below. */
+	 * into secondary_smoke_entry. That routine (in _init.S) prints its
+	 * "cN: a" marker then RE-ARMS the spin-table — clears spin_cpuN
+	 * back to 0 and busy-polls it — so the kernel can later release
+	 * the cores into its own entry point by writing spin_cpuN again
+	 * (triggered in hal_cpuJump below).
+	 *
+	 * Off by default because the secondary cores currently loop back
+	 * through plo's secondary_handoff and the kernel's _other_core_trap
+	 * ~100 times each during a single boot (root cause TBD — see
+	 * docs/status.md "Open work" section). The looping doesn't break
+	 * primary's boot path, but it does saturate enough memory bandwidth
+	 * that pcie/xhci enumeration is materially delayed and the
+	 * `(psh)%` prompt only just barely lands within the 360 s capture
+	 * window. Re-enable once Phase B closes the loop. */
 	hal_smpBringupSecondaries();
+#else
+	(void)hal_smpBringupSecondaries; /* keep symbol referenced */
+#endif
 	hal_consolePrint("hal: init complete\n");
 
 	hal_common.entry = (addr_t)-1;
@@ -453,6 +466,7 @@ int hal_cpuJump(void)
 	 * exist at teardown are stale firmware-era residue. Use
 	 * dc ivac (invalidate-only) — clean would write those stale
 	 * lines back over the correct DDR data plo just placed. */
+#if defined(PLO_SMP_ENABLE) && (PLO_SMP_ENABLE != 0)
 	/* SMP Phase A second-stage release: cores 1-3 are busy-polling
 	 * their spin_cpuN slot from secondary_handoff (plo/_init.S).
 	 * Writing the kernel entry PA into those slots wakes them on
@@ -460,10 +474,7 @@ int hal_cpuJump(void)
 	 *
 	 * dc cvac after each store pushes plo's cached write down to the
 	 * Point of Coherency so the secondaries' caches-off `ldr` reads
-	 * actually see it. Without this, the write sits in plo's L1
-	 * (Normal Inner-WB) and never lands in DDR before mmu_disable
-	 * tears the mapping down. SEV is kept as a hint in case any
-	 * core happens to be in WFE for another reason. */
+	 * actually see it. */
 	asm volatile (
 		"mov x10, #0xe0\n"
 		"str %0, [x10]\n"
@@ -478,6 +489,7 @@ int hal_cpuJump(void)
 		"sev\n"
 		:: "r"(hal_common.entry) : "x10", "memory");
 	hal_consolePrint("hal: smp release-2 → kernel entry\n");
+#endif
 
 	hal_dcacheEnable(0);
 	hal_dcacheInval((addr_t)ADDR_DDR, (addr_t)ADDR_DDR + (addr_t)SIZE_DDR);
