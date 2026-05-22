@@ -165,27 +165,10 @@ static void hal_memoryInit(void)
  * zero value released by `sev` from any core wakes them and they
  * `br x4` to that address. We point them at secondary_smoke_entry.
  */
+/* Kept for reference; the SMP Phase D path skips this and routes
+ * secondaries straight from armstub's WFE into kernel entry via
+ * hal_cpuJump's release-2. See hal_init comment for details. */
 extern void secondary_smoke_entry(void);
-
-static void hal_smpBringupSecondaries(void)
-{
-	addr_t entry = (addr_t)secondary_smoke_entry;
-
-	/* Write spin_cpu1 / spin_cpu2 / spin_cpu3 at PAs 0xE0 / 0xE8 / 0xF0
-	 * via inline asm — `str` to a near-zero address tripped GCC's
-	 * -Warray-bounds=2 when expressed as a C pointer dereference. */
-	asm volatile (
-		"mov x10, #0xe0\n"
-		"str %0, [x10]\n"        /* spin_cpu1 */
-		"mov x10, #0xe8\n"
-		"str %0, [x10]\n"        /* spin_cpu2 */
-		"mov x10, #0xf0\n"
-		"str %0, [x10]\n"        /* spin_cpu3 */
-		"dsb sy\n"
-		"sev\n"
-		:: "r"(entry) : "x10", "memory");
-	hal_consolePrint("hal: smp smoke woke cores 1-3\n");
-}
 
 
 void hal_init(void)
@@ -211,7 +194,24 @@ void hal_init(void)
 	 * PA 0xe0/0xe8/0xf0 on every WFE-wake (spurious or otherwise),
 	 * contending for the memory bus with primary's pcie config-space
 	 * reads. */
-	hal_smpBringupSecondaries();
+	/* SMP Phase D: don't wake secondaries at hal_init time. The earlier
+	 * smoke-then-handoff sequence (hal_smpBringupSecondaries here,
+	 * release-2 in hal_cpuJump) gave secondaries two WFE-wake events,
+	 * with the first one routing them through plo-local
+	 * secondary_smoke_entry and the second one through release-2 to
+	 * kernel entry. Empirically (UART markers wired into both
+	 * armstub's `in_el2` and plo's `secondary_smoke_entry`) the
+	 * secondaries DO wake from WFE and DO reach
+	 * `secondary_smoke_entry`, but they re-enter armstub many times
+	 * before the kernel handoff and never produce the "cN: a" line
+	 * — suggesting something downstream of the smoke print loops
+	 * them back through armstub_exception → secondary_spin.
+	 *
+	 * Simpler: skip plo's smoke entry entirely. hal_cpuJump's
+	 * release-2 writes kernel entry PA to spin_cpu1/2/3 just before
+	 * primary's EL1 drop, plus the syspage PA to spin_cpu0 (PA 0xD8)
+	 * so the kernel's secondary path can pick it up. Secondaries
+	 * stay parked in armstub's WFE the whole time until release-2. */
 	hal_consolePrint("hal: init complete\n");
 
 	hal_common.entry = (addr_t)-1;
@@ -458,6 +458,21 @@ int hal_cpuJump(void)
 	 * dc ivac (invalidate-only) — clean would write those stale
 	 * lines back over the correct DDR data plo just placed. */
 #if defined(PLO_SMP_ENABLE) && (PLO_SMP_ENABLE != 0)
+	/* SMP Phase D fix: publish the syspage PA at PA 0xD8 (= armstub
+	 * spin_cpu0, never read by any secondary's armstub WFE loop —
+	 * cpu0 doesn't spin) so the kernel-side secondary trampoline can
+	 * pick it up. The kernel's shared _start path assumes
+	 * `x9 = syspage PA` (set by hal_exitToEL1 for primary, but
+	 * armstub's `br x4` to spin_cpuN delivers secondaries with x9
+	 * clobbered). The kernel-side fix is in
+	 * phoenix-rtos-kernel/hal/aarch64/_init.S: secondaries reload x9
+	 * from PA 0xD8 immediately after el1_entry. */
+	asm volatile (
+		"mov x10, #0xd8\n"
+		"str %0, [x10]\n"
+		"dc cvac, x10\n"
+		:: "r"(hal_common.hs) : "x10", "memory");
+
 	/* SMP Phase A second-stage release: cores 1-3 are busy-polling
 	 * their spin_cpuN slot from secondary_handoff (plo/_init.S).
 	 * Writing the kernel entry PA into those slots wakes them on
