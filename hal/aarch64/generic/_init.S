@@ -314,20 +314,40 @@ start_core_0:
 .globl secondary_smoke_entry
 .type secondary_smoke_entry, %function
 secondary_smoke_entry:
-	/* SMP Phase D plo-side marker. 'H' for cpu0 (shouldn't happen),
-	 * 'I'/'J'/'K' for cpu1/2/3. Confirms the secondary reached plo's
-	 * smoke entry. If 'I'/'J'/'K' don't appear, secondaries jumped
-	 * elsewhere (or crashed) after the armstub `br x4`. */
+	/* SMP Phase D plo-side marker. Three-byte unique pattern
+	 * "?Q?" + digit per CPU — uses '?' bytes that virtually never
+	 * appear in normal boot output, so we can distinguish marker
+	 * fires from incidental firmware/kernel print noise. */
 	mrs x6, mpidr_el1
 	and x6, x6, #0x3        /* core ID 0..3 */
 
-	mov w4, w6
-	add w4, w4, #'H'
-9800:
+	/* '?' */
+	mov w4, #'?'
+9810:
 	ldr x3, =(PLO_UART0_BASE_ADDRESS + UARTFR_OFFSET)
 	ldr w5, [x3]
 	tst w5, #UARTFR_TXFF
-	b.ne 9800b
+	b.ne 9810b
+	ldr x3, =PLO_UART0_BASE_ADDRESS
+	str w4, [x3]
+
+	/* 'Q' */
+	mov w4, #'Q'
+9811:
+	ldr x3, =(PLO_UART0_BASE_ADDRESS + UARTFR_OFFSET)
+	ldr w5, [x3]
+	tst w5, #UARTFR_TXFF
+	b.ne 9811b
+	ldr x3, =PLO_UART0_BASE_ADDRESS
+	str w4, [x3]
+
+	/* digit = '0' + core ID */
+	add w4, w6, #'0'
+9812:
+	ldr x3, =(PLO_UART0_BASE_ADDRESS + UARTFR_OFFSET)
+	ldr w5, [x3]
+	tst w5, #UARTFR_TXFF
+	b.ne 9812b
 	ldr x3, =PLO_UART0_BASE_ADDRESS
 	str w4, [x3]
 
