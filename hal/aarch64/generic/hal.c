@@ -497,14 +497,22 @@ int hal_cpuJump(void)
 	hal_consolePrint("hal: smp release-2 → kernel entry\n");
 #endif
 
-	/* SMP cold-boot diagnostic (2026-05-23): mark each step of the
-	 * handoff sequence so we can pinpoint a silent hang. 'Cd' = dcache
-	 * disable done, 'Ci' = dcache inval done, 'Id' = icache disable
-	 * done, 'Ii' = icache inval done, 'Md' = mmu disable done. After
-	 * exitToEL1 we should see kernel's 'K' marker. */
+	/* Cold-boot reliability fix (2026-05-23): the prior
+	 * `hal_dcacheInval(0, 0xfc000000)` walked 4 GB of DRAM with
+	 * `dc ivac` (~65 M iterations) using the EL2 MMU. ARM ARM says
+	 * `dc ivac` on Device memory is CONSTRAINED UNPREDICTABLE; the
+	 * 76 MB GPU reserve in [0x3b400000, 0x40000000) is mapped Device,
+	 * making the sweep occasionally fault silently on A72 (matches
+	 * the observed intermittent "hang after release-2, no kernel
+	 * banner" symptom). Switch to set/way invalidation via the
+	 * existing `hal_dcacheInvalAll` helper — same effect (full L1
+	 * D-cache invalidated) but doesn't go through the MMU and can't
+	 * fault on Device-memory mappings. Matches U-Boot's default
+	 * `__asm_invalidate_dcache_all()` path. The Cd/Ci/Id/Ii/Md
+	 * markers stay until cold-boot stability is confirmed. */
 	hal_dcacheEnable(0);
 	hal_consolePrint("Cd\n");
-	hal_dcacheInval((addr_t)ADDR_DDR, (addr_t)ADDR_DDR + (addr_t)SIZE_DDR);
+	hal_dcacheInvalAll();
 	hal_consolePrint("Ci\n");
 	hal_icacheEnable(0);
 	hal_consolePrint("Id\n");
