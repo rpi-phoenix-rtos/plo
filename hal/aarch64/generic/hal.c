@@ -497,11 +497,21 @@ int hal_cpuJump(void)
 	hal_consolePrint("hal: smp release-2 → kernel entry\n");
 #endif
 
+	/* SMP cold-boot diagnostic (2026-05-23): mark each step of the
+	 * handoff sequence so we can pinpoint a silent hang. 'Cd' = dcache
+	 * disable done, 'Ci' = dcache inval done, 'Id' = icache disable
+	 * done, 'Ii' = icache inval done, 'Md' = mmu disable done. After
+	 * exitToEL1 we should see kernel's 'K' marker. */
 	hal_dcacheEnable(0);
+	hal_consolePrint("Cd\n");
 	hal_dcacheInval((addr_t)ADDR_DDR, (addr_t)ADDR_DDR + (addr_t)SIZE_DDR);
+	hal_consolePrint("Ci\n");
 	hal_icacheEnable(0);
+	hal_consolePrint("Id\n");
 	hal_icacheInval();
+	hal_consolePrint("Ii\n");
 	mmu_disable();
+	hal_consolePrint("Md\n");
 
 	hal_exitToEL1();
 
