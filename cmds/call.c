@@ -25,6 +25,12 @@ static void cmd_callInfo(void)
 }
 
 
+static int cmd_callTrace(const char *script)
+{
+	return hal_strcmp(script, "user.plo") == 0;
+}
+
+
 static int cmd_call(int argc, char *argv[])
 {
 	char c;
@@ -33,6 +39,7 @@ static int cmd_call(int argc, char *argv[])
 	handler_t h;
 	addr_t offs = 0;
 	char buff[SIZE_CMD_ARG_LINE];
+	int trace;
 
 	if (argc == 1) {
 		log_error("\n%s: Arguments have to be defined", argv[0]);
@@ -49,6 +56,11 @@ static int cmd_call(int argc, char *argv[])
 	if (res < 0) {
 		log_error("\nCan't open %s, on %s", argv[2], argv[1]);
 		return res;
+	}
+
+	trace = cmd_callTrace(argv[2]);
+	if (trace != 0) {
+		lib_printf("\ncall: opened %s on %s", argv[2], argv[1]);
 	}
 
 	/* ARG_2: magic number*/
@@ -68,6 +80,10 @@ static int cmd_call(int argc, char *argv[])
 		return CMD_EXIT_SUCCESS;
 	}
 
+	if (trace != 0) {
+		lib_printf("\ncall: magic ok %s", argv[2]);
+	}
+
 	/* Execute script */
 	i = 0;
 	lib_printf(CONSOLE_NORMAL);
@@ -82,6 +98,9 @@ static int cmd_call(int argc, char *argv[])
 		offs += len;
 		if ((len == 0) || (c == '\n') || (c == '\0' /* EOF */)) {
 			buff[i] = '\0';
+			if ((trace != 0) && (i != 0)) {
+				lib_printf("\ncall: exec %s", buff);
+			}
 			res = cmd_parse(buff);
 			if (res != CMD_EXIT_SUCCESS) {
 				return (res < 0) ? res : -EINVAL;

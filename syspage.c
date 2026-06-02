@@ -673,12 +673,12 @@ void *syspage_progAllocateAndAdd(const char *map, size_t size, const char *argv,
 
 /* TODO: function get value from hal-specific struct, consider move to target-specific code */
 #if defined(HAS_GRAPHICS) && HAS_GRAPHICS != 0
-void syspage_graphmodeSet(graphmode_t graphmode)
+void syspage_graphmodeSet(const graphmode_t *graphmode)
 {
-	syspage_common.syspage->hs.graphmode.width = graphmode.width;
-	syspage_common.syspage->hs.graphmode.height = graphmode.height;
-	syspage_common.syspage->hs.graphmode.bpp = graphmode.bpp;
-	syspage_common.syspage->hs.graphmode.pitch = graphmode.pitch;
-	syspage_common.syspage->hs.graphmode.framebuffer = graphmode.framebuffer;
+	syspage_common.syspage->hs.graphmode.width = graphmode->width;
+	syspage_common.syspage->hs.graphmode.height = graphmode->height;
+	syspage_common.syspage->hs.graphmode.bpp = graphmode->bpp;
+	syspage_common.syspage->hs.graphmode.pitch = graphmode->pitch;
+	syspage_common.syspage->hs.graphmode.framebuffer = graphmode->framebuffer;
 }
 #endif

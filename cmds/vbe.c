@@ -318,7 +318,7 @@ static int cmd_vbeMain(int argc, char *argv[])
 			break;
 		}
 
-		syspage_graphmodeSet(graphmode);
+		syspage_graphmodeSet(&graphmode);
 
 		_vbe_modeSet(err);
 	} while (0);

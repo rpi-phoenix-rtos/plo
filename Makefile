@@ -8,7 +8,7 @@
 
 SIL ?= @
 MAKEFLAGS += --no-print-directory
-VERSION="1.21 rev: $(shell git rev-parse --short HEAD)"
+VERSION="1.21 rev: $(shell if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git rev-parse --short HEAD 2>/dev/null; else echo unknown; fi)"
 
 KERNEL=1
 

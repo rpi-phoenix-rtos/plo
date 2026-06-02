@@ -89,7 +89,7 @@ extern void syspage_consoleSet(unsigned int id);
 
 #if defined(HAS_GRAPHICS) && HAS_GRAPHICS != 0
 /* Graphics mode */
-extern void syspage_graphmodeSet(graphmode_t graphmode);
+extern void syspage_graphmodeSet(const graphmode_t *graphmode);
 #endif
 
 

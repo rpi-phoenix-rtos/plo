@@ -113,19 +113,41 @@ void hal_dcacheFlush(addr_t start, addr_t end)
 }
 
 
+/* Read SCTLR for the current EL (rpi4b plo runs at EL2; zynqmp at EL3).
+ * Path A of docs/plans/plo-el2-mmu-fix.md. */
+static inline u64 cache_readSctlr(void)
+{
+	switch ((unsigned)(sysreg_read(currentEL) & 0xcU)) {
+		case 0xcU: return sysreg_read(sctlr_el3);
+		case 0x8U: return sysreg_read(sctlr_el2);
+		default:   return sysreg_read(sctlr_el1);
+	}
+}
+
+
+static inline void cache_writeSctlr(u64 val)
+{
+	switch ((unsigned)(sysreg_read(currentEL) & 0xcU)) {
+		case 0xcU: sysreg_write(sctlr_el3, val); break;
+		case 0x8U: sysreg_write(sctlr_el2, val); break;
+		default:   sysreg_write(sctlr_el1, val); break;
+	}
+}
+
+
 static void cacheToggle(unsigned int mode, u64 sctlr_bit)
 {
-	asm volatile(
-			"dsb ish\n"
-			"mrs x2, sctlr_el3\n"
-			"bic x2, x2, %0\n"
-			"cmp %1, #0\n"
-			"csel %0, %0, xzr, ne\n"
-			"orr x2, x2, %0\n"
-			"msr sctlr_el3, x2\n"
-			"dsb ish\n"
-			"isb\n"
-			: "+r"(sctlr_bit) : "r"(mode) : "x2", "memory");
+	u64 val;
+
+	hal_cpuDataSyncBarrier();
+	val = cache_readSctlr();
+	val &= ~sctlr_bit;
+	if (mode != 0u) {
+		val |= sctlr_bit;
+	}
+	cache_writeSctlr(val);
+	hal_cpuDataSyncBarrier();
+	hal_cpuInstrBarrier();
 }
 
 

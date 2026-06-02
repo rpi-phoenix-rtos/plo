@@ -26,12 +26,14 @@ static void nop(void)
 
 void hal_customInit(void) __attribute__((weak, alias("nop")));
 void hal_customDone(void) __attribute__((weak, alias("nop")));
+void hal_graphicsInit(void) __attribute__((weak, alias("nop")));
 
 int main(void)
 {
 	hal_init();
 	hal_customInit();
 	syspage_init();
+	hal_graphicsInit();
 
 	lib_printf(CONSOLE_BOLD "Phoenix-RTOS loader v. " VERSION CONSOLE_NORMAL);
 	lib_printf(CONSOLE_CURSOR_HIDE CONSOLE_MAGENTA "\nhal: %s", hal_cpuInfo());

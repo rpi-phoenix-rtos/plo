@@ -17,6 +17,7 @@ extern char __bss_start[], __bss_end[];
 extern char __data_load[], __data_start[], __data_end[];
 extern char __rodata_load[], __rodata_start[], __rodata_end[];
 extern char __ramtext_load[], __ramtext_start[], __ramtext_end[];
+extern char __heap_base[], __heap_limit[];
 
 extern void (*__init_array_start[])(void);
 extern void (*__init_array_end[])(void);
@@ -48,6 +49,15 @@ void _startc(int argc, char **argv, char **env)
 	}
 	/* Clear the .bss section */
 	hal_memset(__bss_start, 0, __bss_end - __bss_start);
+
+	/* TD-05 diagnostic: zero the heap so any byte the syspage/allocator
+	 * does not explicitly write reads back as 0 rather than as
+	 * uninitialised DRAM. Helps distinguish "cache didn't flush dirty
+	 * data to DDR" (would still be deterministic) from "plo never
+	 * wrote that byte" (was showing up as bit-level nondeterminism
+	 * across boots on Pi 4). Safe to keep: cost is one memset of 16 KB
+	 * at startup. Revisit once the root cause is understood. */
+	hal_memset(__heap_base, 0, __heap_limit - __heap_base);
 
 	size = __init_array_end - __init_array_start;
 	for (i = 0; i < size; i++) {

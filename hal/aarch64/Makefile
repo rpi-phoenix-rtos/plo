@@ -6,9 +6,11 @@
 # %LICENSE%
 #
 
-ifneq (, $(findstring zynqmp, $(TARGET_SUBFAMILY)))
-  include hal/aarch64/zynqmp/Makefile
-  CFLAGS += -Ihal/aarch64/zynqmp
+PLATFORM_MAKEFILE := hal/aarch64/$(TARGET_SUBFAMILY)/Makefile
+
+ifneq ($(wildcard $(PLATFORM_MAKEFILE)),)
+  include $(PLATFORM_MAKEFILE)
+  CFLAGS += -I$(dir $(PLATFORM_MAKEFILE))
 endif
 
 OBJS += $(addprefix $(PREFIX_O)hal/$(TARGET_SUFF)/, exceptions.o cache.o cpu.o string.o mmu.o)

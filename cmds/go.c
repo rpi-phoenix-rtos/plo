@@ -29,19 +29,25 @@ static void cmd_goInfo(void)
 
 static int cmd_go(int argc, char *argv[])
 {
+	int res;
+
 	if (argc != 1) {
 		log_error("\n%s: Command does not accept arguments", argv[0]);
 		return CMD_EXIT_FAILURE;
 	}
 
 	log_info("\nRunning Phoenix-RTOS\n");
+	lib_printf("\ngo: enter");
 	lib_printf(CONSOLE_NORMAL CONSOLE_CURSOR_SHOW);
 
 	devs_done();
+	lib_printf("\ngo: devs done");
 	hal_done();
-	hal_cpuJump();
+	lib_printf("\ngo: hal done");
+	lib_printf("\ngo: jump");
+	res = hal_cpuJump();
+	lib_printf("\ngo: jump returned %d", res);
 
-	/* Never reached */
 	return CMD_EXIT_FAILURE;
 }
 

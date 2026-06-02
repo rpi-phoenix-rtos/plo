@@ -33,6 +33,10 @@ extern void hal_init(void);
 extern void hal_done(void);
 
 
+/* Function publishes optional graphics metadata into syspage after syspage_init() */
+extern void hal_graphicsInit(void);
+
+
 extern void hal_syspageSet(hal_syspage_t *hs);
 
 
