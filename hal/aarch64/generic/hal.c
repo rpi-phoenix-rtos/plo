@@ -84,20 +84,10 @@ static u32 hal_readBe32(addr_t addr)
 }
 
 
-/* Diagnostic instrumentation for Step 3 (plo MMU+caches ON) bisection.
- *
- * Step 3 has failed twice with the same TR3-then-silence hang despite
- * Path A's EL-aware generalisation of mmu.c + cache.c. To localise the
- * remaining EL2-specific trap we re-enable Step 3 here, instrument
- * each sub-step with hal_consolePrint markers, and reorder hal_init
- * so console_init runs BEFORE hal_memoryInit (caches-off PL011 MMIO
- * writes work without MMU).
- *
- * Expected post-fix UART output:
- *   "mem: pre-init\n" / "mem: pre-enable\n" / "mem: post-enable\n"
- *
- * Whichever marker DOES print and which one does NOT will tell us
- * which sysreg write hangs.
+/* Map all ARM-accessible DRAM as Normal WB Cacheable and enable the MMU
+ * (SCTLR.M only — caches disabled; full M|C|I is enabled by the kernel).
+ * console_init must run before this function because PL011 MMIO writes
+ * work without the MMU but the remapping step cannot produce output.
  */
 static void hal_memoryInit(void)
 {
@@ -148,33 +138,18 @@ static void hal_memoryInit(void)
 }
 
 
-/* SMP smoke test: wake cores 1-3 from their armstub spin-table parking
- * and point them at secondary_smoke_entry (in _init.S). They will
- * print `cN: alive\n` to UART and park in WFE — no kernel state is
- * touched, no shared resource is contended (no stack, no MMU). This
- * proves the wake-up mechanism works end-to-end without any risk to
- * core 0's boot path.
- *
- * Pi 4 armstub spin-table layout (see phoenix-armstub8-rpi4.S near
- * `secondary_spin`):
- *   PA 0xD8 = spin_cpu0  (unused — core 0 doesn't spin)
- *   PA 0xE0 = spin_cpu1
- *   PA 0xE8 = spin_cpu2
- *   PA 0xF0 = spin_cpu3
- * Cores wait at `wfe` then `ldr x4, [spin_cpu0 + coreID*8]`. A non-
- * zero value released by `sev` from any core wakes them and they
- * `br x4` to that address. We point them at secondary_smoke_entry.
+/* secondary_smoke_entry (defined in _init.S): prints "cN: alive" and
+ * parks in WFE. Not called in the current boot path; secondaries go
+ * directly from armstub's WFE to kernel entry via hal_cpuJump release-2.
+ * PLO_SMP_ENABLE (not set in generic/config.h) gates the full SMP path.
  */
-/* Kept for reference; the SMP Phase D path skips this and routes
- * secondaries straight from armstub's WFE into kernel entry via
- * hal_cpuJump's release-2. See hal_init comment for details. */
 extern void secondary_smoke_entry(void);
 
 
 void hal_init(void)
 {
 	interrupts_init();
-	console_init();           /* moved BEFORE hal_memoryInit for diag prints */
+	console_init();           /* must precede hal_memoryInit (caches-off PL011 writes work without MMU) */
 	hal_consolePrint("hal: console_init done\n");
 	hal_memoryInit();
 	hal_consolePrint("hal: hal_memoryInit done\n");
@@ -184,34 +159,8 @@ void hal_init(void)
 	hal_consolePrint("hal: video_init done\n");
 	hal_printCurrentEl();
 	video_markHalReady();
-	/* Always release secondaries from armstub into the plo-local
-	 * secondary_smoke_entry → secondary_park sequence. This matches
-	 * the pre-Phase-A behaviour (cores wake, print their "cN: a"
-	 * smoke marker, then WFE-park in plo memory) and is the regime
-	 * primary's boot path was tuned against. Cores parked in armstub's
-	 * spin-table WFE empirically delay primary's pcie/xhci progress
-	 * — possibly because the armstub spin loop re-issues `ldr` from
-	 * PA 0xe0/0xe8/0xf0 on every WFE-wake (spurious or otherwise),
-	 * contending for the memory bus with primary's pcie config-space
-	 * reads. */
-	/* SMP Phase D: don't wake secondaries at hal_init time. The earlier
-	 * smoke-then-handoff sequence (hal_smpBringupSecondaries here,
-	 * release-2 in hal_cpuJump) gave secondaries two WFE-wake events,
-	 * with the first one routing them through plo-local
-	 * secondary_smoke_entry and the second one through release-2 to
-	 * kernel entry. Empirically (UART markers wired into both
-	 * armstub's `in_el2` and plo's `secondary_smoke_entry`) the
-	 * secondaries DO wake from WFE and DO reach
-	 * `secondary_smoke_entry`, but they re-enter armstub many times
-	 * before the kernel handoff and never produce the "cN: a" line
-	 * — suggesting something downstream of the smoke print loops
-	 * them back through armstub_exception → secondary_spin.
-	 *
-	 * Simpler: skip plo's smoke entry entirely. hal_cpuJump's
-	 * release-2 writes kernel entry PA to spin_cpu1/2/3 just before
-	 * primary's EL1 drop, plus the syspage PA to spin_cpu0 (PA 0xD8)
-	 * so the kernel's secondary path can pick it up. Secondaries
-	 * stay parked in armstub's WFE the whole time until release-2. */
+	/* Secondaries stay parked in armstub's spin-table WFE; hal_cpuJump
+	 * releases them directly to kernel entry (release-2 path). */
 	hal_consolePrint("hal: init complete\n");
 
 	hal_common.entry = (addr_t)-1;

@@ -527,8 +527,8 @@ uart_put_hex64:
 	ret
 .size uart_put_hex64, .-uart_put_hex64
 
-/* Slot-E (Sync at Current EL with SPx) full diagnostic. Reads EL2
- * exception registers (ESR_EL2, ELR_EL2, FAR_EL2, SPSR_EL2) and prints
+/* Slot-E (Sync at Current EL with SPx) full diagnostic. Reads EL1
+ * exception registers (esr_el1, elr_el1, far_el1, spsr_el1) and prints
  * them as hex. ARM ARM D13.2.36: ESR.EC[31:26] decodes the fault class.
  * Most likely cases for our boot:
  *   0x26 = SP alignment fault    (matches the SCTLR_EL2.SA=1 + RES1
