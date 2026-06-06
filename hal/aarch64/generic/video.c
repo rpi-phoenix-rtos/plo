@@ -56,8 +56,6 @@ enum {
 	tag_setpxlordr = 0x48006u,
 	tag_getfb = 0x40001u,
 	tag_getpitch = 0x40008u,
-	tag_getclkrate = 0x30002u, /* get_clock_rate — unused; TD-16-1 resolved (plo c988e6a), pending removal */
-	tag_clkid_arm  = 0x3u,     /* clock ID 3 = ARM core */
 	tag_last = 0u,
 };
 

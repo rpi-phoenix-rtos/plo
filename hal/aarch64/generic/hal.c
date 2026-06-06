@@ -179,9 +179,6 @@ void hal_graphicsInit(void)
 }
 
 
-static void hal_printHex64(const char *label, u64 val);
-
-
 void hal_syspageSet(hal_syspage_t *hs)
 {
 	addr_t dtbAddr;
@@ -223,9 +220,6 @@ void hal_syspageSet(hal_syspage_t *hs)
 		:
 		: "x9", "memory");
 
-	hal_printHex64("plo: hal_firmwareDtb = 0x", (u64)hal_firmwareDtb);
-	hal_printHex64("plo: armstub[0xf8]   = 0x", (u64)armstubDtb32);
-
 	dtbAddr = hal_firmwareDtb;
 	if (dtbAddr == 0u) {
 		dtbAddr = (addr_t)armstubDtb32;
@@ -234,8 +228,6 @@ void hal_syspageSet(hal_syspage_t *hs)
 	if ((dtbAddr != 0u) && (hal_readBe32(dtbAddr) == 0xd00dfeedu)) {
 		hs->firmwareDtb = dtbAddr;
 		hs->firmwareDtbSize = hal_readBe32(dtbAddr + 4u);
-		hal_printHex64("plo: firmware DTB at  = 0x", (u64)dtbAddr);
-		hal_printHex64("plo: firmware DTB size= 0x", (u64)hs->firmwareDtbSize);
 		hal_consolePrint("plo: firmware DTB accepted\n");
 	}
 	else {
@@ -370,35 +362,15 @@ void hal_cpuReboot(void)
 }
 
 
-static void hal_printHex64(const char *label, u64 val)
-{
-	static char buf[20];
-	int i;
-
-	hal_consolePrint(label);
-	for (i = 15; i >= 0; --i) {
-		u8 n = (u8)((val >> (i * 4)) & 0xfu);
-		buf[15 - i] = (n < 10u) ? (char)('0' + n) : (char)('a' + n - 10u);
-	}
-	buf[16] = '\n';
-	buf[17] = '\0';
-	hal_consolePrint(buf);
-}
-
-
 int hal_cpuJump(void)
 {
 	if (hal_common.entry == (addr_t)-1) {
-		hal_consolePrint("hal: jump no entry\n");
 		return -1;
 	}
 
-	hal_consolePrint("hal: jump entry\n");
 	video_markKernelJump();
 	hal_interruptsDisableAll();
-	hal_consolePrint("hal: jump irq off\n");
 	hal_coreJumpFlag = 1;
-	hal_consolePrint("hal: jump exit el1\n");
 
 	/* Phase Z1 reverted (2026-05-17): plo runs M-only (mmu_enable
 	 * single-shot M|C|I hangs at MSR on A72 r0p3 + BCM2711). With
@@ -457,21 +429,15 @@ int hal_cpuJump(void)
 	 * existing `hal_dcacheInvalAll` helper — same effect (full L1
 	 * D-cache invalidated) but doesn't go through the MMU and can't
 	 * fault on Device-memory mappings. Matches U-Boot's default
-	 * `__asm_invalidate_dcache_all()` path. The Cd/Ci/Id/Ii/Md
-	 * markers stay until cold-boot stability is confirmed. */
+	 * `__asm_invalidate_dcache_all()` path. */
 	hal_dcacheEnable(0);
-	hal_consolePrint("Cd\n");
 	hal_dcacheInvalAll();
-	hal_consolePrint("Ci\n");
 	hal_icacheEnable(0);
-	hal_consolePrint("Id\n");
 	hal_icacheInval();
-	hal_consolePrint("Ii\n");
 	mmu_disable();
-	hal_consolePrint("Md\n");
 
 	hal_exitToEL1();
 
-	hal_consolePrint("hal: jump returned\n");
+	/* Never reached */
 	return 0;
 }
