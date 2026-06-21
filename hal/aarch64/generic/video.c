@@ -191,6 +191,57 @@ static int video_framebufferInit(void)
 	if (video_common.size == 0u) {
 		video_common.size = video_common.pitch * video_common.height;
 	}
+
+	/* Double-buffer: request virtual height = 2x the GRANTED physical height so a second
+	 * framebuffer sits directly below the first. The GPU then renders off-screen and the
+	 * renderer page-flips via SET_VIRTUAL_OFFSET at runtime, eliminating GPU-write vs
+	 * display-read contention on the live fb (the V3D render-stall root cause). Done as a
+	 * SECOND call because the firmware overrides the requested physical resolution to the
+	 * HDMI native, so 2x must be computed from the granted height. Best-effort + guarded:
+	 * if the firmware cannot grant 2x (GPU memory), the original single buffer is kept and
+	 * the renderer falls back to blit-resolve. graphmode height stays PHYSICAL (buffer 0);
+	 * the renderer derives buffer 1 = framebuffer + pitch*height and probes the granted
+	 * virtual height via the mailbox. */
+	{
+		u32 phys_h = video_common.height;
+		hal_memset((void *)video_mailbox, 0, video_mailboxWords * sizeof(u32));
+		video_mailbox[0] = 18u * sizeof(u32);
+		video_mailbox[1] = mbox_request;
+		video_mailbox[2] = tag_setvirtwh;
+		video_mailbox[3] = 8u;
+		video_mailbox[4] = 8u;
+		video_mailbox[5] = video_common.width;
+		video_mailbox[6] = phys_h * 2u;
+		video_mailbox[7] = tag_getfb;
+		video_mailbox[8] = 8u;
+		video_mailbox[9] = 8u;
+		video_mailbox[10] = 4096u;
+		video_mailbox[11] = 0u;
+		video_mailbox[12] = tag_getpitch;
+		video_mailbox[13] = 4u;
+		video_mailbox[14] = 4u;
+		video_mailbox[15] = 0u;
+		video_mailbox[16] = tag_last;
+		if ((video_mailboxCall(mbox_chan_prop) == 0) && (video_mailbox[6] >= phys_h * 2u) &&
+				((video_mailbox[10] & 0x3fffffffu) != 0u) && (video_mailbox[15] != 0u)) {
+			/* 2x granted: adopt the (possibly relocated) buffer + pitch; keep height physical. */
+			video_common.framebuffer = (volatile u32 *)(addr_t)(video_mailbox[10] & 0x3fffffffu);
+			video_common.pitch = video_mailbox[15];
+			video_common.size = (video_mailbox[11] != 0u) ? video_mailbox[11] : (video_common.pitch * phys_h);
+		}
+		/* re-pan to buffer 0 so plo's progress panel + the kernel klog mirror render on-screen */
+		hal_memset((void *)video_mailbox, 0, video_mailboxWords * sizeof(u32));
+		video_mailbox[0] = 8u * sizeof(u32);
+		video_mailbox[1] = mbox_request;
+		video_mailbox[2] = tag_setvirtoff;
+		video_mailbox[3] = 8u;
+		video_mailbox[4] = 8u;
+		video_mailbox[5] = 0u;
+		video_mailbox[6] = 0u;
+		video_mailbox[7] = tag_last;
+		(void)video_mailboxCall(mbox_chan_prop);
+	}
+
 	video_common.progressStage = video_stageFramebufferReady;
 
 	/* NOTE: framebuffer cacheable mapping is now set up statically by
