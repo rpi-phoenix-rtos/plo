@@ -211,7 +211,7 @@ static int video_framebufferInit(void)
 		video_mailbox[3] = 8u;
 		video_mailbox[4] = 8u;
 		video_mailbox[5] = video_common.width;
-		video_mailbox[6] = phys_h * 2u;
+		video_mailbox[6] = phys_h * 3u;   /* triple-buffer: 3 stacked buffers (degrades to 2x/1x) */
 		video_mailbox[7] = tag_getfb;
 		video_mailbox[8] = 8u;
 		video_mailbox[9] = 8u;
