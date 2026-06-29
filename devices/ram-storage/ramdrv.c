@@ -29,13 +29,13 @@ static const struct {
 };
 
 
-static int ramdrv_isValidAddress(unsigned int minor, u32 off, size_t size)
+static int ramdrv_isValidAddress(unsigned int minor, addr_t off, size_t size)
 {
 	size_t rsize = ramParams[minor].end - ramParams[minor].start;
 
-	if (off < rsize && (off + size) <= rsize)
+	if ((off < rsize) && (size <= (rsize - off))) {
 		return 1;
-
+	}
 	return 0;
 }
 
@@ -67,12 +67,13 @@ static ssize_t ramdrv_read(unsigned int minor, addr_t offs, void *buff, size_t l
 
 static ssize_t ramdrv_write(unsigned int minor, addr_t offs, const void *buff, size_t len)
 {
-	if (ramdrv_isValidMinor(minor) == 0) {
+	if ((ramdrv_isValidMinor(minor) == 0) || (ramdrv_isValidAddress(minor, offs, len) == 0)) {
 		return -EINVAL;
 	}
 
-	/* Not supported. TODO? */
-	return -ENOSYS;
+	hal_memcpy((void *)(ramParams[minor].start + offs), buff, len);
+
+	return (ssize_t)len;
 }
 
 
