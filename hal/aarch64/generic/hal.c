@@ -301,7 +301,7 @@ static void hal_getMinOverlappedRange(addr_t start, addr_t end, mapent_t *entry,
 
 int hal_memoryGetNextEntry(addr_t start, addr_t end, mapent_t *entry)
 {
-	int i;
+	size_t i;
 	mapent_t tempEntry, minEntry;
 
 	static const mapent_t entries[] = {

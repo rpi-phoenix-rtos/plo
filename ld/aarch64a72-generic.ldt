@@ -5,9 +5,10 @@
  *
  * Cortex-A72 low-memory placement.
  *
- * The old generic A53 placement put PLO at 0x40080000. That is above usable
- * ARM RAM on the real 1 GB Raspberry Pi 4B bring-up board, so Pi 4 must not
- * reuse that layout.
+ * The old generic A53 placement put PLO at 0x40080000, which lands above usable
+ * ARM RAM on a 1 GB Raspberry Pi 4B. Pi 4 must not reuse that layout; it places
+ * PLO low instead (see the 4 GB layout below), which is safe across all Pi 4B
+ * RAM sizes.
  *
  * Copyright 2026 Phoenix Systems
  *
