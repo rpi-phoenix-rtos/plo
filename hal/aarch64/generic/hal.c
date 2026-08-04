@@ -141,7 +141,8 @@ static void hal_memoryInit(void)
 /* secondary_smoke_entry (defined in _init.S): prints "cN: alive" and
  * parks in WFE. Not called in the current boot path; secondaries go
  * directly from armstub's WFE to kernel entry via hal_cpuJump release-2.
- * PLO_SMP_ENABLE (not set in generic/config.h) gates the full SMP path.
+ * PLO_SMP_ENABLE (=1 via the rpi4b board_config.h) compiles in that
+ * release-2 handoff; secondary_smoke_entry itself stays off the live path.
  */
 extern void secondary_smoke_entry(void);
 
@@ -372,12 +373,11 @@ int hal_cpuJump(void)
 	hal_interruptsDisableAll();
 	hal_coreJumpFlag = 1;
 
-	/* Phase Z1 reverted (2026-05-17): plo runs M-only (mmu_enable
-	 * single-shot M|C|I hangs at MSR on A72 r0p3 + BCM2711). With
-	 * caches off, plo's writes go direct to DDR; cache lines that
-	 * exist at teardown are stale firmware-era residue. Use
-	 * dc ivac (invalidate-only) — clean would write those stale
-	 * lines back over the correct DDR data plo just placed. */
+	/* plo runs M-only (the single-shot M|C|I mmu_enable hangs at the MSR
+	 * on A72 r0p3 + BCM2711). With caches off, plo's writes go direct to
+	 * DDR; cache lines that exist at teardown are stale firmware-era
+	 * residue. Use dc ivac (invalidate-only) — clean would write those
+	 * stale lines back over the correct DDR data plo just placed. */
 #if defined(PLO_SMP_ENABLE) && (PLO_SMP_ENABLE != 0)
 	/* SMP Phase D fix: publish the syspage PA at PA 0xD8 (= armstub
 	 * spin_cpu0, never read by any secondary's armstub WFE loop —

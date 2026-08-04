@@ -184,8 +184,9 @@ start_el2:
 	ldr x0, =0x30c50838
 	msr sctlr_el2, x0
 
-	/* SCTLR_EL1 RES1 baseline (no M/C/I) — start_el1 will pick this
-	 * up via mmu_enable() which RMWs the SCTLR. */
+	/* SCTLR_EL1 RES1 baseline (no M/C/I). On rpi4 hal_memoryInit (hal.c)
+	 * later RMWs this to set SCTLR.M only (caches stay off in plo);
+	 * mmu_enable() is not called on this path. */
 	ldr x0, =0x30c50838
 	msr sctlr_el1, x0
 
@@ -284,13 +285,13 @@ other_core_trap:
 	wfe
 	/*
 	 * NOTE: cores 1-3 do not actually reach this point in the current
-	 * configuration — the rpi4 armstub parks them in its own
-	 * `secondary_spin` loop at the standard spin-table addresses
-	 * (PA 0xE0 / 0xE8 / 0xF0). Plo's hal_smpBringupSecondaries (called
-	 * from C, see hal.c) writes the secondary entry address into those
-	 * armstub slots and issues SEV, which jumps cores 1-3 into
-	 * secondary_smoke_entry below (NOT here). This local trap is kept
-	 * as defense-in-depth in case the armstub layout ever changes.
+	 * configuration — the rpi4 armstub parks them in its own spin loop
+	 * at the standard spin-table addresses (PA 0xE0 / 0xE8 / 0xF0).
+	 * hal_cpuJump (see hal.c) writes the kernel entry PA into those
+	 * armstub slots and issues SEV, releasing cores 1-3 directly to
+	 * kernel entry; secondary_smoke_entry below is not on the live boot
+	 * path. This local trap is kept as defense-in-depth in case the
+	 * armstub layout ever changes.
 	 */
 	b other_core_trap
 

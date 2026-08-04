@@ -201,13 +201,11 @@ static int video_framebufferInit(void)
 
 	video_common.progressStage = video_stageFramebufferReady;
 
-	/* NOTE: framebuffer cacheable mapping is now set up statically by
+	/* The framebuffer's cacheable mapping is set up statically by
 	 * hal_memoryInit (which remaps the full 0..0xfe000000 range as
-	 * Normal WB Cacheable before MMU enable). Doing it dynamically
-	 * here previously caused wild PC corruption — mmu_mapAddr's
-	 * post-TLBI barrier sequence is incomplete for runtime mapping
-	 * changes with the MMU live, and the speculation hit stale
-	 * translations. Avoid that entire class of issue by pre-mapping. */
+	 * Normal WB Cacheable before MMU enable), not dynamically here:
+	 * runtime mapping changes with the MMU live are unreliable on this
+	 * core, so pre-mapping avoids that class of issue. */
 
 	return 0;
 }
@@ -233,12 +231,8 @@ static void video_drawSignal(void)
 		}
 	}
 
-	/* 2026-05-17: restored full 3-square progress panel rendering.
-	 * The "wild FAR" crash that previously forced the early return
-	 * was a cache-off-era MMU artifact; with armstub fixes
-	 * (1319367 + L2CTLR_EL1) and caches operational, the panel
-	 * code runs cleanly. Matches the original Phoenix-RTOS boot
-	 * progress visual on other platforms. */
+	/* Full 3-square progress panel — the standard Phoenix-RTOS boot
+	 * progress visual shown on other platforms. */
 
 	if ((video_common.width < 128u) || (video_common.height < 64u)) {
 		hal_dcacheClean((addr_t)video_common.framebuffer, (addr_t)video_common.framebuffer + video_common.size);
