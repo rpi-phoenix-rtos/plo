@@ -39,6 +39,20 @@
 .endm
 
 
+/* Print the character already in w9. Needed by the exception vectors: a slot is
+ * only 0x80 bytes and a uart_putc expands to seven instructions, so a slot
+ * cannot afford to print its own tag inline -- it loads the tag and branches. */
+.macro uart_putw9
+991:
+	ldr x3, =(PLO_UART0_BASE_ADDRESS + UARTFR_OFFSET)
+	ldr w4, [x3]
+	tst w4, #UARTFR_TXFF
+	b.ne 991b
+	ldr x3, =PLO_UART0_BASE_ADDRESS
+	str w9, [x3]
+.endm
+
+
 .globl _start
 .type _start, %function
 _start:
@@ -488,10 +502,23 @@ exit_el1:
  * either fix the offending exception cause or restore the original
  * vector table.
  */
-.macro exc_tag tag
-	uart_putc \tag
+/* A vector slot is 0x80 bytes = 32 instructions, and uart_putc expands to
+ * seven, so the slot cannot print anything itself. It loads its tag into w9 and
+ * branches to the common dumper; the .org directives below turn any overflow
+ * into a build error rather than a silent overlap. */
+.macro exc_slot tag
+	mov w9, #\tag
+	b _exc_dump
+.endm
+
+/* "<c0><c1><c2>=<16 hex>\n" for the value in x6. Clobbers x3-x5, x7, x30. */
+.macro exc_field c0, c1, c2
+	uart_putc \c0
+	uart_putc \c1
+	uart_putc \c2
+	uart_putc '='
+	bl uart_put_hex64
 	uart_putc '\n'
-	b .
 .endm
 
 /* Print one ASCII hex nibble for the low 4 bits of w4. */
@@ -528,144 +555,139 @@ uart_put_hex64:
 	ret
 .size uart_put_hex64, .-uart_put_hex64
 
-/* Slot-E (Sync at Current EL with SPx) full diagnostic. Reads EL1
- * exception registers (esr_el1, elr_el1, far_el1, spsr_el1) and prints
- * them as hex. ARM ARM D13.2.36: ESR.EC[31:26] decodes the fault class.
- * Most likely cases for our boot:
- *   0x26 = SP alignment fault    (matches the SCTLR_EL2.SA=1 + RES1
- *                                 missing-bits hypothesis)
- *   0x25 = Data abort same EL    (DFSC field then narrows it)
- *   0x2f = SError                 (latent from armstub/VC4)
- *   0x18 = MSR/MRS trap          (would mean dispatcher EL3-reg)
+/* Common exception dump, reached from every vector slot with the slot's tag in
+ * w9.
+ *
+ * The table used to print ONE character per slot and halt. That was not
+ * laziness: the real dispatcher in _exceptions.S reads spsr_el3 / elr_el3 /
+ * esr_el3 / far_el3, while this same table is installed at VBAR_EL3, VBAR_EL2
+ * AND VBAR_EL1 -- so at EL1 those EL3-only accesses themselves trap, and the
+ * crash that gets reported is the dispatcher's, not the one you wanted to see.
+ *
+ * Reading CurrentEL first and using the matching EL's registers is legal at
+ * every level, so one table can serve all three. Everything here clobbers
+ * freely (x3-x9, x30) because every path ends in a halt.
  */
-.globl _slot_e_dump
-.type _slot_e_dump, %function
-_slot_e_dump:
+.globl _exc_dump
+.type _exc_dump, %function
+_exc_dump:
 	uart_putc 'E'
-	uart_putc '\n'
-	uart_putc 'E'
-	uart_putc 'S'
-	uart_putc 'R'
-	uart_putc '='
-	mrs x6, esr_el1
-	bl uart_put_hex64
-	uart_putc '\n'
+	uart_putc 'X'
+	uart_putc 'C'
+	uart_putw9
+	uart_putc ' '
 	uart_putc 'E'
 	uart_putc 'L'
-	uart_putc 'R'
-	uart_putc '='
+
+	mrs x8, CurrentEL
+	lsr x8, x8, #2
+	and x8, x8, #3
+	cmp x8, #3
+	b.eq _exc_dump_el3
+	cmp x8, #2
+	b.eq _exc_dump_el2
+
+_exc_dump_el1:
+	uart_putc '1'
+	uart_putc '\n'
+	mrs x6, esr_el1
+	exc_field 'E', 'S', 'R'
 	mrs x6, elr_el1
-	bl uart_put_hex64
-	uart_putc '\n'
-	uart_putc 'F'
-	uart_putc 'A'
-	uart_putc 'R'
-	uart_putc '='
+	exc_field 'E', 'L', 'R'
 	mrs x6, far_el1
-	bl uart_put_hex64
-	uart_putc '\n'
-	uart_putc 'S'
-	uart_putc 'P'
-	uart_putc 'R'
-	uart_putc '='
+	exc_field 'F', 'A', 'R'
 	mrs x6, spsr_el1
-	bl uart_put_hex64
-	uart_putc '\n'
-	uart_putc 'S'
-	uart_putc 'C'
-	uart_putc 'T'
-	uart_putc '='
+	exc_field 'S', 'P', 'R'
 	mrs x6, sctlr_el1
-	bl uart_put_hex64
-	uart_putc '\n'
+	exc_field 'S', 'C', 'T'
+	b _exc_halt
 
-	/* TTBR0_EL2 / TCR_EL2 / MAIR_EL2 — verify translation setup. */
-	uart_putc 'T'
-	uart_putc 'T'
-	uart_putc 'B'
-	uart_putc '='
-	mrs x6, ttbr0_el1
-	bl uart_put_hex64
+_exc_dump_el2:
+	uart_putc '2'
 	uart_putc '\n'
-	uart_putc 'T'
-	uart_putc 'C'
-	uart_putc 'R'
-	uart_putc '='
-	mrs x6, tcr_el1
-	bl uart_put_hex64
-	uart_putc '\n'
-	uart_putc 'M'
-	uart_putc 'A'
-	uart_putc 'R'
-	uart_putc '='
-	mrs x6, mair_el1
-	bl uart_put_hex64
-	uart_putc '\n'
+	mrs x6, esr_el2
+	exc_field 'E', 'S', 'R'
+	mrs x6, elr_el2
+	exc_field 'E', 'L', 'R'
+	mrs x6, far_el2
+	exc_field 'F', 'A', 'R'
+	mrs x6, spsr_el2
+	exc_field 'S', 'P', 'R'
+	mrs x6, sctlr_el2
+	exc_field 'S', 'C', 'T'
+	b _exc_halt
 
-	/* Read 4 instruction bytes at ELR_EL2. If these match the static
-	 * disassembly (0x911c6000 for `add x0, x0, #0x718`) the I-cache is
-	 * NOT the culprit and EC=0 must come from elsewhere. If they
-	 * don't match, I-cache aliasing is proven. */
-	uart_putc 'I'
-	uart_putc 'N'
-	uart_putc 'S'
-	uart_putc '='
-	mrs x8, elr_el1
-	ldr w6, [x8]                /* writing w6 zero-extends to x6 */
-	bl uart_put_hex64
+_exc_dump_el3:
+	uart_putc '3'
+	uart_putc '\n'
+	mrs x6, esr_el3
+	exc_field 'E', 'S', 'R'
+	mrs x6, elr_el3
+	exc_field 'E', 'L', 'R'
+	mrs x6, far_el3
+	exc_field 'F', 'A', 'R'
+	mrs x6, spsr_el3
+	exc_field 'S', 'P', 'R'
+	mrs x6, sctlr_el3
+	exc_field 'S', 'C', 'T'
+
+_exc_halt:
+	uart_putc 'H'
+	uart_putc 'L'
+	uart_putc 'T'
 	uart_putc '\n'
 	b .
-.size _slot_e_dump, .-_slot_e_dump
+.size _exc_dump, .-_exc_dump
 
 .align 11
 .globl _vector_table
 _vector_table:
 .org(_vector_table)
-	exc_tag 'A'
+	exc_slot 'A'
 
 .org (_vector_table + 0x80)
-	exc_tag 'B'
+	exc_slot 'B'
 
 .org (_vector_table + 0x100)
-	exc_tag 'C'
+	exc_slot 'C'
 
 .org (_vector_table + 0x180)
-	exc_tag 'D'
+	exc_slot 'D'
 
 .org (_vector_table + 0x200)
-	b _slot_e_dump
+	exc_slot 'E'
 
 .org (_vector_table + 0x280)
-	exc_tag 'F'
+	exc_slot 'F'
 
 .org (_vector_table + 0x300)
-	exc_tag 'G'
+	exc_slot 'G'
 
 .org (_vector_table + 0x380)
-	exc_tag 'H'
+	exc_slot 'H'
 
 .org (_vector_table + 0x400)
-	exc_tag 'I'
+	exc_slot 'I'
 
 .org (_vector_table + 0x480)
-	exc_tag 'J'
+	exc_slot 'J'
 
 .org (_vector_table + 0x500)
-	exc_tag 'K'
+	exc_slot 'K'
 
 .org (_vector_table + 0x580)
-	exc_tag 'L'
+	exc_slot 'L'
 
 .org (_vector_table + 0x600)
-	exc_tag 'M'
+	exc_slot 'M'
 
 .org (_vector_table + 0x680)
-	exc_tag 'N'
+	exc_slot 'N'
 
 .org (_vector_table + 0x700)
-	exc_tag 'O'
+	exc_slot 'O'
 
 .org (_vector_table + 0x780)
-	exc_tag 'P'
+	exc_slot 'P'
 
 .org (_vector_table + 0x800)
