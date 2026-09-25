@@ -449,8 +449,17 @@ error_loop:
 hal_exitToEL1:
 	dsb sy
 	isb
+	/* Early bring-up marker (D9): 'A' plus the EL digit this exits from,
+	 * printed before the kernel console exists. Gated off by default via
+	 * RPI4_EARLY_MARKERS in board_config.h so a stock boot log stays clean;
+	 * set it to 1 to restore them when triaging the handoff. NOTE the gate is
+	 * per-site here, not on the uart_putc macro as in the armstub and the
+	 * kernel8-reloc trampoline -- _exc_dump below uses the same macro and must
+	 * always print. */
+#if defined(RPI4_EARLY_MARKERS) && (RPI4_EARLY_MARKERS != 0)
 	uart_putc 10
 	uart_putc 65
+#endif
 	adr x0, hal_common
 	ldp x9, x0, [x0]
 	mrs x1, currentEL
@@ -463,8 +472,10 @@ hal_exitToEL1:
 	b error_loop
 
 exit_el3:
+#if defined(RPI4_EARLY_MARKERS) && (RPI4_EARLY_MARKERS != 0)
 	uart_putc 51
 	uart_putc 10
+#endif
 	msr elr_el3, x0
 	mov x0, #0b1111000101
 	msr spsr_el3, x0
@@ -473,16 +484,20 @@ exit_el3:
 	eret
 
 exit_el2:
+#if defined(RPI4_EARLY_MARKERS) && (RPI4_EARLY_MARKERS != 0)
 	uart_putc 50
 	uart_putc 10
+#endif
 	msr elr_el2, x0
 	mov x0, #0b1111000101
 	msr spsr_el2, x0
 	eret
 
 exit_el1:
+#if defined(RPI4_EARLY_MARKERS) && (RPI4_EARLY_MARKERS != 0)
 	uart_putc 49
 	uart_putc 10
+#endif
 	br x0
 .size hal_exitToEL1, .-hal_exitToEL1
 
