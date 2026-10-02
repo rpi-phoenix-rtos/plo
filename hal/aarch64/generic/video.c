@@ -190,7 +190,7 @@ static int video_framebufferInit(void)
 
 	video_common.framebuffer = (volatile u32 *)(addr_t)(video_mailbox[28] & 0x3fffffffu);
 	/* Report the PHYSICAL (displayed) size from the SET_PHYSICAL response ([5],[6]) — NOT the
-	 * virtual size ([10],[11]) which is now 3x tall for triple-buffer. graphmode/fbcon/rpi4-fb
+	 * virtual size ([10],[11]) which is now 3x tall for triple-buffer. graphmode/fbcon
 	 * see one 1080p buffer (buffer 0); the renderer derives buffers 1/2 at +pitch*height and
 	 * probes the granted virtual height. */
 	video_common.width = video_mailbox[5];
