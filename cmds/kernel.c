@@ -118,6 +118,12 @@ static int cmd_kernel(int argc, char *argv[])
 
 				hal_memcpy((void *)(entry->start + segOffs), buff, res);
 			}
+
+			/* Zero the part of the segment not backed by the file (.bss): the kernel
+			 * expects it cleared, and RAM holds garbage after a power-off */
+			if (phdr.p_memsz > phdr.p_filesz) {
+				hal_memset((void *)(entry->start + phdr.p_filesz), 0, phdr.p_memsz - phdr.p_filesz);
+			}
 		}
 	}
 
