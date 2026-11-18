@@ -68,6 +68,12 @@ void *syspage_alloc(size_t size)
 }
 
 
+const syspage_t *syspage_get(void)
+{
+	return syspage_common.syspage;
+}
+
+
 void syspage_kernelPAddrAdd(addr_t address)
 {
 	syspage_common.syspage->pkernel = address;

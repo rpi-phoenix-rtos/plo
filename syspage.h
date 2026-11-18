@@ -38,6 +38,10 @@ extern void syspage_init(void);
 extern void *syspage_alloc(size_t size);
 
 
+/* Read-only view of the syspage being built (maps, entries, programs) */
+extern const syspage_t *syspage_get(void);
+
+
 extern void syspage_kernelPAddrAdd(addr_t address);
 
 
