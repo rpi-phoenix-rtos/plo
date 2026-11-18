@@ -11,6 +11,15 @@ PLO_ALLCOMMANDS = alias app bankswitch bitstream blob bootcm4 bootrom bridge cal
   ptable reboot script stop test-dev test-ddr wait watchdog vbe
 
 PLO_COMMANDS ?= $(PLO_ALLCOMMANDS)
+
+# Debug-only commands: never part of a default build, and rejected below if
+# listed in PLO_COMMANDS without their switch. Set the switch in the build
+# environment (e.g. PLO_DEBUG_POISON=y) to compile one in.
+ifeq ($(PLO_DEBUG_POISON),y)
+  PLO_ALLCOMMANDS += poison
+  PLO_COMMANDS := $(filter-out poison, $(PLO_COMMANDS)) poison
+endif
+
 PLO_APPLETS = $(filter $(PLO_ALLCOMMANDS), $(PLO_COMMANDS))
 PLO_UNKNOWN_COMMANDS = $(filter-out $(PLO_ALLCOMMANDS), $(PLO_COMMANDS))
 
